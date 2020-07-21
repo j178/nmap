@@ -354,6 +354,7 @@ void NmapOps::Initialize() {
   gettimeofday(&start_time, NULL);
   pTrace = vTrace = false;
   reason = false;
+  incomplete = false;
   adler32 = false;
   if (datadir) free(datadir);
   datadir = NULL;

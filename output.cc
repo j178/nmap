@@ -1481,6 +1481,9 @@ void write_host_header(Target *currenths) {
         log_write(LOG_PLAIN, ", %s", target_reason_str(currenths));
       log_write(LOG_PLAIN, "]\n");
     }
+    if (currenths->timedOut(NULL) && o.incomplete) {
+      log_write(LOG_PLAIN, "Host timed out. Incomplete results will be given.\n");
+    }
   }
   write_host_status(currenths);
   if (currenths->TargetName() != NULL
@@ -1557,6 +1560,9 @@ void write_host_status(Target *currenths) {
       log_write(LOG_MACHINE, "Host: %s (%s)\tStatus: Down\n",
                 currenths->targetipstr(), currenths->HostName());
     }
+    log_write(LOG_MACHINE, "Host: %s (%s)\tHost timed out: %s\tPartial results: %s\n",
+      currenths->targetipstr(), currenths->HostName(), 
+      currenths->timedOut(NULL) ? "True" : "False", o.incomplete ? "True" : "False");
   }
 }
 

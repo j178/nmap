@@ -355,6 +355,7 @@ static void printusage() {
          "  -d: Increase debugging level (use -dd or more for greater effect)\n"
          "  --reason: Display the reason a port is in a particular state\n"
          "  --open: Only show open (or possibly open) ports\n"
+         "  --incomplete: Display results obtained prior to host timeout\n"
          "  --packet-trace: Show all packets sent and received\n"
          "  --iflist: Print host interfaces and routes (for debugging)\n"
          "  --append-output: Append to rather than clobber specified output files\n"
@@ -654,6 +655,7 @@ void parse_options(int argc, char **argv) {
     {"ttl", required_argument, 0, 0}, /* Time to live */
     {"traceroute", no_argument, 0, 0},
     {"reason", no_argument, 0, 0},
+    {"incomplete", no_argument, 0, 0},
     {"allports", no_argument, 0, 0},
     {"version-intensity", required_argument, 0, 0},
     {"version-light", no_argument, 0, 0},
@@ -1019,6 +1021,8 @@ void parse_options(int argc, char **argv) {
           o.traceroute = true;
         } else if (strcmp(long_options[option_index].name, "reason") == 0) {
           o.reason = true;
+        } else if (strcmp(long_options[option_index].name, "incomplete") == 0) {
+          o.incomplete = true;
         } else if (strcmp(long_options[option_index].name, "min-rate") == 0) {
           if (sscanf(optarg, "%f", &o.min_packet_send_rate) != 1 || o.min_packet_send_rate <= 0.0)
             fatal("Argument to --min-rate must be a positive floating-point number");
@@ -2065,9 +2069,14 @@ int nmap_main(int argc, char *argv[]) {
     o.ping_group_sz = o.minHostGroupSz();
   HostGroupState hstate(o.ping_group_sz, o.randomize_hosts, argc, (const char **) argv);
 
+  // 大循环，每次循环都扫描一批目标：Targets
   do {
     ideal_scan_group_sz = determineScanGroupSize(o.numhosts_scanned, &ports);
-
+    
+    // 通过 nexthost 解析获得一个 target, 加入到 Targets 数组中
+    // 注意：nexthost 在解析 target spec 之后，也会做一次 host discovery，所以 nmap -sL 也是做了网络请求的
+    // Targets 作为一个组，一个批次同时做 port scan
+    // start populate Targets
     while (Targets.size() < ideal_scan_group_sz) {
       o.current_scantype = HOST_DISCOVERY;
       currenths = nexthost(&hstate, exclude_group, &ports, o.pingtype);
@@ -2110,6 +2119,8 @@ int nmap_main(int argc, char *argv[]) {
       /* I used to check that !currenths->weird_responses, but in some
          rare cases, such IPs CAN be port successfully scanned and even
          connected to */
+      // 不存活的 target 在这里 continue 或者 break 掉，不会被加到 Targets 中
+      // 所以 Targets 中都是存活的 target
       if (!(currenths->flags & HOST_UP)) {
         if (o.verbose && (!o.openOnly() || currenths->ports.hasOpenPorts())) {
           xml_start_tag("host");
@@ -2159,6 +2170,7 @@ int nmap_main(int argc, char *argv[]) {
       }
       Targets.push_back(currenths);
     }
+    // end populate Targets
 
     if (Targets.size() == 0)
       break; /* Couldn't find any more targets */
@@ -2172,7 +2184,7 @@ int nmap_main(int argc, char *argv[]) {
       o.decoys[o.decoyturn] = Targets[0]->source();
 
     /* I now have the group for scanning in the Targets vector */
-
+    // 端口扫描
     if (!o.noportscan) {
       // Ultra_scan sets o.scantype for us so we don't have to worry
       if (o.synscan)
@@ -2237,6 +2249,7 @@ int nmap_main(int argc, char *argv[]) {
       }
     }
 
+    // 系统扫描
     if (o.osscan) {
       OSScan os_engine;
       os_engine.os_scan(Targets);
@@ -2254,7 +2267,9 @@ int nmap_main(int argc, char *argv[]) {
     for (targetno = 0; targetno < Targets.size(); targetno++) {
       currenths = Targets[targetno];
       /* Now I can do the output and such for each host */
-      if (currenths->timedOut(NULL)) {
+      // 修改 timeout host 的输出逻辑
+      // 如果指定了 --incomplete 参数，则跟未超时的 host 同样输出
+      if (currenths->timedOut(NULL) && !o.incomplete) {
         xml_open_start_tag("host");
         xml_attribute("starttime", "%lu", (unsigned long) currenths->StartTime());
         xml_attribute("endtime", "%lu", (unsigned long) currenths->EndTime());
@@ -2274,6 +2289,7 @@ int nmap_main(int argc, char *argv[]) {
         xml_open_start_tag("host");
         xml_attribute("starttime", "%lu", (unsigned long) currenths->StartTime());
         xml_attribute("endtime", "%lu", (unsigned long) currenths->EndTime());
+        xml_attribute("incomplete_results", "%s", o.incomplete ? "true" : "false" );
         xml_close_start_tag();
         write_host_header(currenths);
         printportoutput(currenths, &currenths->ports);
