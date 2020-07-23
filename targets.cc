@@ -378,6 +378,8 @@ bool HostGroupState::defer(Target *t) {
 }
 
 void HostGroupState::undefer() {
+  // 将 defer_buffer 的所有元素移动到 undeferred 的末尾，defer_buffer 被清空
+  // http://www.cplusplus.com/reference/list/list/splice/
   this->undeferred.splice(this->undeferred.end(), this->defer_buffer);
 }
 
@@ -498,6 +500,7 @@ static Target *next_target(HostGroupState *hs, const struct addrset *exclude_gro
   Target *t;
 
   /* First handle targets deferred in the last batch. */
+  // 先从上次 refresh 时 defer 的 target 处理
   if (!hs->undeferred.empty()) {
     t = hs->undeferred.front();
     hs->undeferred.pop_front();
@@ -505,7 +508,7 @@ static Target *next_target(HostGroupState *hs, const struct addrset *exclude_gro
   }
 
 tryagain:
-
+  // hs->current_group.get_next_host 才是真正产生 target 的地方，获取的 target 通过 ss 返回
   if (hs->current_group.get_next_host(&ss, &sslen) != 0) {
     const char *expr;
     /* We are going to have to pop in another expression. */
@@ -537,6 +540,7 @@ tryagain:
   if (hostInExclude((struct sockaddr *) &ss, sslen, exclude_group))
     goto tryagain;
 
+  // 构造 target
   t = setup_target(hs, &ss, sslen, pingtype);
   if (t == NULL)
     goto tryagain;
@@ -550,8 +554,11 @@ static void refresh_hostbatch(HostGroupState *hs, const struct addrset *exclude_
   bool arpping_done = false;
   struct timeval now;
 
+  // 将游标和 sz 都清零
   hs->current_batch_sz = hs->next_batch_no = 0;
+  // 填充 undeferred list
   hs->undefer();
+  // 填充 hostbatch
   while (hs->current_batch_sz < hs->max_batch_sz) {
     Target *t;
 
@@ -561,6 +568,7 @@ static void refresh_hostbatch(HostGroupState *hs, const struct addrset *exclude_
 
     /* Does this target need to go in a separate host group? */
     if (target_needs_new_hostgroup(hs->hostbatch, hs->current_batch_sz, t)) {
+      // 如果 target 需要在另外一个 group 中执行，则先将它 defer, 下次 refresh 时处理
       if (hs->defer(t))
         continue;
       else
@@ -631,15 +639,20 @@ static void refresh_hostbatch(HostGroupState *hs, const struct addrset *exclude_
       }
     }
   } else if (!arpping_done) {
+    // 开始 ping (探测存活性)
     massping(hs->hostbatch, hs->current_batch_sz, ports);
   }
 
+  // rdns
   if (!o.noresolve)
     nmap_mass_rdns(hs->hostbatch, hs->current_batch_sz);
 }
 
 Target *nexthost(HostGroupState *hs, const struct addrset *exclude_group,
                  struct scan_lists *ports, int pingtype) {
+  // next_batch_no 是游标，指示应该从 hostbatch 中获取元素的位置，每次获取后+1
+  // current_batch_sz 表示当前 hostbatch 数组中元素的个数
+  // 当 next_batch_no 追上 current_batch_sz 时，就需要重新填充 hostbatch
   if (hs->next_batch_no >= hs->current_batch_sz)
     refresh_hostbatch(hs, exclude_group, ports, pingtype);
   if (hs->next_batch_no >= hs->current_batch_sz)

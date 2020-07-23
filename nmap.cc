@@ -898,8 +898,10 @@ void parse_options(int argc, char **argv) {
           o.extra_payload = (char *) safe_malloc(MAX(o.extra_payload_length, 1));
           get_random_bytes(o.extra_payload, o.extra_payload_length);
         } else if (strcmp(long_options[option_index].name, "send-eth") == 0) {
+          //  Send using raw ethernet frames
           o.sendpref = PACKET_SEND_ETH_STRONG;
         } else if (strcmp(long_options[option_index].name, "send-ip") == 0) {
+          //  Send using raw IP packets
           o.sendpref = PACKET_SEND_IP_STRONG;
         } else if (strcmp(long_options[option_index].name, "stylesheet") == 0) {
           o.setXSLStyleSheet(optarg);
@@ -1321,6 +1323,8 @@ void parse_options(int argc, char **argv) {
           o.finscan = 1;
           break;
         case 'L':
+          // -sL 实际上会设置三个参数：-sL -sn -Pn
+          // 所以 -sL 其实是不会发网络请求的
           o.listscan = true;
           o.noportscan = true;
           o.pingtype |= PINGTYPE_NONE;
@@ -2074,7 +2078,7 @@ int nmap_main(int argc, char *argv[]) {
     ideal_scan_group_sz = determineScanGroupSize(o.numhosts_scanned, &ports);
     
     // 通过 nexthost 解析获得一个 target, 加入到 Targets 数组中
-    // 注意：nexthost 在解析 target spec 之后，也会做一次 host discovery，所以 nmap -sL 也是做了网络请求的
+    // 注意：nexthost 在解析 target spec 之后，也会做一次 host discovery（例外：-sL 参数会设置 -sn 和 -Pn，所以是不会发 ping 的）
     // Targets 作为一个组，一个批次同时做 port scan
     // start populate Targets
     while (Targets.size() < ideal_scan_group_sz) {
@@ -2243,6 +2247,7 @@ int nmap_main(int argc, char *argv[]) {
         }
       }
 
+      // 服务扫描
       if (o.servicescan) {
         o.current_scantype = SERVICE_SCAN;
         service_scan(Targets);
@@ -2657,6 +2662,11 @@ static int nmap_fetchfile_userdir(char *buf, size_t buflen, const char *file) {
 }
 #endif
 
+// nmap 获取 data files 和 lua 脚本的搜索逻辑
+// --datadir 最优先
+// 然后是 NMAPDIR 环境变量
+// 然后是 nmap 可执行程序所在的目录
+// 然后是 . 当前目录（如果在上面的目录中找到了文件，并在当前目录也找到了，会有一条 warning，说是处于安全考虑不是使用 . 中的文件，除非设置 NMAP_DIR 或者 --datadir）
 static int nmap_fetchfile_sub(char *filename_returned, int bufferlen, const char *file) {
   char *dirptr;
   int res;

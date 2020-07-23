@@ -2540,6 +2540,7 @@ static void servicescan_read_handler(nsock_pool nsp, nsock_event nse, void *myda
         // example, if we read more data for the same probe response
         // it will probably still match.
       } else {
+        // 可以在这里将 readstr 打出来，这个就是原始的 banner 信息
         if (o.debugging > 1 || o.versionTrace()) {
           if (MD->product || MD->version || MD->info)
             log_write(LOG_PLAIN, "Service scan match (Probe %s matched with %s line %d): %s:%hu is %s%s.  Version: |%s|%s|%s|\n",
