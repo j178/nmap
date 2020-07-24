@@ -4735,6 +4735,7 @@ size_t read_host_from_file(FILE *fp, char *buf, size_t n)
 /* Return next target host specification from the supplied stream.
  * if parameter "random" is set to true, then the function will
  * return a random, non-reserved, IP address in decimal-dot notation */
+// 这个函数处理三种 host 的来源：input file (-iL), 随机生成 (-iR), 命令行中非参数部分
 const char *grab_next_host_spec(FILE *inputfd, bool random, int argc, const char **argv) {
   static char host_spec[1024];
   struct in_addr ip;
@@ -4746,6 +4747,7 @@ const char *grab_next_host_spec(FILE *inputfd, bool random, int argc, const char
     } while (ip_is_reserved(&ip));
     Strncpy(host_spec, inet_ntoa(ip), sizeof(host_spec));
   } else if (!inputfd) {
+    // 这里返回的就是命令行中提供的非参数部分
     return( (optind < argc)?  argv[optind++] : NULL);
   } else {
     n = read_host_from_file(inputfd, host_spec, sizeof(host_spec));

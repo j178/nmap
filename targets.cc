@@ -318,6 +318,7 @@ bool target_needs_new_hostgroup(Target **targets, int targets_sz, const Target *
     return false;
 
   /* Different address family? */
+  // 这里保证了一个批次的 targets 的 address family 都是一样的
   if (targets[0]->af() != target->af())
     return true;
 
@@ -355,6 +356,7 @@ bool target_needs_new_hostgroup(Target **targets, int targets_sz, const Target *
    this class instance is used -- the array is NOT copied.
  */
 HostGroupState::HostGroupState(int lookahead, int rnd, int argc, const char **argv) {
+  // 这里不用初始化 current_group ，让 TargetGroup 用默认初始化就可以，之后通过 
   assert(lookahead > 0);
   this->argc = argc;
   this->argv = argv;
@@ -386,6 +388,7 @@ void HostGroupState::undefer() {
 const char *HostGroupState::next_expression() {
   if (o.max_ips_to_scan == 0 || o.numhosts_scanned + this->current_batch_sz < o.max_ips_to_scan) {
     const char *expr;
+    // 返回原始的一个目标字符串
     expr = grab_next_host_spec(o.inputfd, o.generate_random_ips, this->argc, this->argv);
     if (expr != NULL)
       return expr;
@@ -509,6 +512,7 @@ static Target *next_target(HostGroupState *hs, const struct addrset *exclude_gro
 
 tryagain:
   // hs->current_group.get_next_host 才是真正产生 target 的地方，获取的 target 通过 ss 返回
+  // 第一次调用时因为 current_group->netblock == NULL, 返回 -1
   if (hs->current_group.get_next_host(&ss, &sslen) != 0) {
     const char *expr;
     /* We are going to have to pop in another expression. */
@@ -517,11 +521,13 @@ tryagain:
       if (expr == NULL)
         /* That's the last of them. */
         return NULL;
+      // 在这里解析 host 字符串，才算是初始化了 netblock
       if (hs->current_group.parse_expr(expr, o.af()) == 0)
         break;
       else
         log_bogus_target(expr);
     }
+    // 第一次在这里又回到 current_group.get_next_host
     goto tryagain;
   }
 
