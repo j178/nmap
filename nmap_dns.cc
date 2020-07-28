@@ -1176,7 +1176,7 @@ static void nmap_mass_rdns_core(Target **targets, int num_targets) {
     tpreq->targ = *hostI;
     tpreq->tries = 0;
     tpreq->servers_tried = 0;
-
+    // 创建 request 对象并放到全局的 new_reqs 中，之后在 do_possible_writes 会处理 new_reqs
     new_reqs.push_back(tpreq);
 
     stat_actual++;
